@@ -13,6 +13,7 @@ class MouseController:
         This is a simple exponential moving average — Phase 8 will
         replace this with a more robust filter if needed.
         """
+        self.scroll_ref_y = None
         self.smoothing_factor = smoothing_factor
         self.prev_x, self.prev_y = 0, 0
 
