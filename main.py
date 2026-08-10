@@ -1,3 +1,4 @@
+import os
 import cv2
 import time
 import pyautogui
@@ -7,6 +8,7 @@ from src.coordinate_mapper import CoordinateMapper
 from src.mouse_controller import MouseController
 from src.gesture_detector import GestureDetector
 from src.landmarks_reference import THUMB_TIP, INDEX_TIP, MIDDLE_TIP, RING_TIP,PINKY_TIP
+from datetime import datetime
 
 def main():
     cam_width, cam_height = 640, 480
@@ -21,6 +23,11 @@ def main():
     click_cooldown = 0.4   # seconds between allowed clicks
     last_click_time = 0
     is_dragging = False
+    
+    screenshot_cooldown = 3.0  # longer gap — holding the pose shouldn't spam captures
+    last_screenshot_time = 0
+    screenshot_dir = "assets/screenshots"
+    os.makedirs(screenshot_dir, exist_ok=True)
     
     pinch_start_time = None
     DRAG_HOLD_THRESHOLD = 0.3  # seconds - pinch held longer than this = drag, not click
@@ -46,6 +53,7 @@ def main():
             index_middle_up = fingers == [False, True, True, False, False]
             index_pinky_up=fingers == [False, True, False, False, True]
             only_thumb_up = fingers == [True, False, False, False, False]
+            all_fingers_up = fingers == [True, True, True, True, True]
 
             is_pinching_thumb_index = gesture.is_pinching(landmarks, THUMB_TIP, INDEX_TIP)
 
@@ -100,6 +108,18 @@ def main():
                     last_click_time = current_time
                     cv2.putText(frame, "RIGHT CLICK", (10, 110),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            elif all_fingers_up:
+                if current_time - last_screenshot_time > screenshot_cooldown:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filepath = os.path.join(screenshot_dir, f"screenshot_{timestamp}.png")
+                    pyautogui.screenshot(filepath)
+                    last_screenshot_time = current_time
+                    cv2.putText(frame, "SCREENSHOT SAVED", (10, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                else:
+                    # still show feedback while pose is held but cooldown hasn't cleared
+                    cv2.putText(frame, "OPEN PALM", (10, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (150, 150, 150), 2)
 
             else:
                 mouse.scroll_ref_y = None
