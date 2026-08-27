@@ -33,3 +33,8 @@ class HandDetector:
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 landmark_list.append((id, cx, cy))
         return landmark_list
+    def get_handedness(self):
+        """Returns 'Left' or 'Right' for the first detected hand, or None."""
+        if self.results and self.results.multi_handedness:
+            return self.results.multi_handedness[0].classification[0].label
+        return None
