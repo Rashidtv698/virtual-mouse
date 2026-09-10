@@ -21,19 +21,15 @@ class GestureDetector:
         # landmarks is [(id, x, y), ...] -> convert to {id: (x, y)} for easy lookup
         return {id: (x, y) for id, x, y in landmarks}
 
-    def fingers_up(self, landmarks):
-        """
-        Returns a list of 5 booleans: [thumb, index, middle, ring, pinky]
-        True = finger extended, False = finger curled down.
-        """
+    def fingers_up(self, landmarks, handedness=None):
         lm = self._landmark_dict(landmarks)
         fingers = []
 
-        # Thumb: extended = tip is FARTHER from palm (pinky_mcp) than the IP joint is.
-        # Distance-based, so it works the same for left AND right hands.
-        thumb_tip_dist = self._distance(lm[THUMB_TIP], lm[PINKY_MCP])
-        thumb_ip_dist = self._distance(lm[THUMB_IP], lm[PINKY_MCP])
-        fingers.append(thumb_tip_dist > thumb_ip_dist)
+        if handedness == "Left":
+            thumb_extended = lm[THUMB_TIP][0] > lm[THUMB_IP][0]   # original comparison — correct for Left
+        else:
+            thumb_extended = lm[THUMB_TIP][0] < lm[THUMB_IP][0]   # flipped — needed for Right
+        fingers.append(thumb_extended)
 
         finger_pairs = [
             (INDEX_TIP, INDEX_PIP),
@@ -44,8 +40,7 @@ class GestureDetector:
         for tip, pip in finger_pairs:
             fingers.append(lm[tip][1] < lm[pip][1])
 
-        return fingers  # e.g. [False, True, False, False, False] = only index up
-
+        return fingers
     def get_pinch_distance(self, landmarks, tip_a, tip_b):
         lm = self._landmark_dict(landmarks)
         if tip_a not in lm or tip_b not in lm:

@@ -11,6 +11,9 @@ from src.mouse_controller import MouseController
 from src.gesture_detector import GestureDetector
 from src.landmarks_reference import THUMB_TIP, INDEX_TIP, MIDDLE_TIP, RING_TIP,PINKY_TIP
 from datetime import datetime
+from ctypes import cast, POINTER
+from comtypes import CLSCTX_ALL
+from pycaw.pycaw import AudioUtilities
 
 def main():
     cam_width, cam_height = 640, 480
@@ -53,7 +56,19 @@ def main():
     brightness_anchor_y = None
     brightness_baseline = 50
     BRIGHTNESS_DRAG_RANGE = 150  # pixels of vertical movement to swing full 0-100%
-        
+    
+    device = AudioUtilities.GetSpeakers()
+    volume_ctrl = device.EndpointVolume  
+    locked_axis = None  # None, "x", or "y"
+    AXIS_LOCK_THRESHOLD = 15  # pixels of movement before committing to an axis
+    
+    volume_anchor_x = None
+    volume_baseline = 50
+    VOLUME_DRAG_RANGE = 150  # pixels of horizontal movement to swing full 0-100%
+    volume_cooldown = 0.15
+    last_volume_time = 0
+    
+         
 
     while True:
         frame = camera.get_frame()
@@ -64,11 +79,11 @@ def main():
         landmarks = detector.get_landmark_positions(frame)
 
         if landmarks:
-            fingers = gesture.fingers_up(landmarks)
-            lm_dict = {id: (x, y) for id, x, y in landmarks}
-            index_pos = lm_dict[INDEX_TIP]
             current_time = time.time()
             handedness = detector.get_handedness()
+            fingers = gesture.fingers_up(landmarks, handedness)   # pass handedness in
+            lm_dict = {id: (x, y) for id, x, y in landmarks}
+            index_pos = lm_dict[INDEX_TIP]
             is_pinching_thumb_index = gesture.is_pinching(landmarks, THUMB_TIP, INDEX_TIP)
 
             only_index_up = fingers == [False, True, False, False, False]
@@ -105,6 +120,10 @@ def main():
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 pinch_start_time = None
 
+            left_pinching = left_thumb_index_shape and is_pinching_thumb_index
+            left_extended_only = left_thumb_index_shape and not is_pinching_thumb_index
+
+            # --- Single unified gesture chain: exactly one branch fires per frame ---
             if right_pinch_click_drag:
                 if pinch_start_time is None:
                     pinch_start_time = current_time
@@ -119,21 +138,34 @@ def main():
                     cv2.putText(frame, "DRAGGING", (10, 110),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
 
-            elif left_thumb_index_shape:
+            elif left_pinching:
                 thumb_pos_l = lm_dict[THUMB_TIP]
                 index_pos_l = lm_dict[INDEX_TIP]
                 pinch_mid_y = (thumb_pos_l[1] + index_pos_l[1]) // 2
+                pinch_mid_x = (thumb_pos_l[0] + index_pos_l[0]) // 2
 
-                if is_pinching_thumb_index:
-                    if not left_brightness_active:
-                        left_brightness_active = True
-                        brightness_anchor_y = pinch_mid_y
-                        try:
-                            brightness_baseline = sbc.get_brightness()[0]
-                        except Exception:
-                            brightness_baseline = 50
-                    else:
-                        delta_y = brightness_anchor_y - pinch_mid_y
+                if not left_brightness_active:
+                    left_brightness_active = True
+                    brightness_anchor_y = pinch_mid_y
+                    volume_anchor_x = pinch_mid_x
+                    locked_axis = None
+                    try:
+                        brightness_baseline = sbc.get_brightness()[0]
+                    except Exception:
+                        brightness_baseline = 50
+                    volume_baseline = int(volume_ctrl.GetMasterVolumeLevelScalar() * 100)
+                else:
+                    delta_y = brightness_anchor_y - pinch_mid_y
+                    delta_x = pinch_mid_x - volume_anchor_x
+
+                    if locked_axis is None:
+                        if abs(delta_x) > AXIS_LOCK_THRESHOLD or abs(delta_y) > AXIS_LOCK_THRESHOLD:
+                            locked_axis = "x" if abs(delta_x) > abs(delta_y) else "y"
+
+                    brightness_pct = brightness_baseline
+                    volume_pct = volume_baseline
+
+                    if locked_axis == "y":
                         brightness_pct = brightness_baseline + int(
                             np.interp(delta_y, [-BRIGHTNESS_DRAG_RANGE, BRIGHTNESS_DRAG_RANGE], [-100, 100])
                         )
@@ -141,18 +173,32 @@ def main():
                         if current_time - last_brightness_time > brightness_cooldown:
                             sbc.set_brightness(brightness_pct)
                             last_brightness_time = current_time
-                        cv2.putText(frame, f"BRIGHTNESS: {brightness_pct}%", (10, 110),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 100, 0), 2)
+
+                    elif locked_axis == "x":
+                        volume_pct = volume_baseline + int(
+                            np.interp(delta_x, [-VOLUME_DRAG_RANGE, VOLUME_DRAG_RANGE], [-100, 100])
+                        )
+                        volume_pct = max(0, min(100, volume_pct))
+                        if current_time - last_volume_time > volume_cooldown:
+                            volume_ctrl.SetMasterVolumeLevelScalar(volume_pct / 100, None)
+                            last_volume_time = current_time
+
+                    mode_label = f"AXIS: {locked_axis.upper()}" if locked_axis else "AXIS: (hold still)"
+                    cv2.putText(frame, f"BRIGHTNESS: {brightness_pct}%  VOLUME: {volume_pct}%  {mode_label}",
+                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
+
+            elif left_extended_only:
+                if left_brightness_active:
+                    left_brightness_active = False
+                    brightness_anchor_y = None
+                    volume_anchor_x = None
+                    locked_axis = None
                 else:
-                    if left_brightness_active:
-                        left_brightness_active = False
-                        brightness_anchor_y = None
-                    else:
-                        if current_time - last_slide_time > slide_cooldown:
-                            pyautogui.press('left')
-                            cv2.putText(frame, "PREVIOUS SLIDE (Left hand)", (10, 110),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
-                            last_slide_time = current_time
+                    if current_time - last_slide_time > slide_cooldown:
+                        pyautogui.press('left')
+                        cv2.putText(frame, "PREVIOUS SLIDE (Left hand)", (10, 110),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+                        last_slide_time = current_time
 
             elif right_slide_next:
                 if current_time - last_slide_time > slide_cooldown:
@@ -222,6 +268,8 @@ def main():
             else:
                 left_brightness_active = False
                 brightness_anchor_y = None
+                volume_anchor_x = None
+                locked_axis = None
 
             cv2.putText(frame, f"Hand: {handedness} | Fingers: {fingers}", (10, 170),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
