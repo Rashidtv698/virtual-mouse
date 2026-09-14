@@ -2,6 +2,7 @@ import os
 import cv2
 import time
 import pyautogui
+import subprocess
 import screen_brightness_control as sbc
 import numpy as np
 from src.camera import Camera
@@ -68,6 +69,9 @@ def main():
     volume_cooldown = 0.15
     last_volume_time = 0
     
+    shortcut_cooldown = 4.0  # opening an app shouldn't retrigger rapidly while pose is held
+    last_shortcut_time = 0
+    
          
 
     while True:
@@ -100,6 +104,9 @@ def main():
             right_slide_next = (handedness != "Left") and thumb_index_extended and not is_pinching_thumb_index
             left_slide_prev = (handedness == "Left") and thumb_index_extended and not is_pinching_thumb_index
             right_only_thumb_up = (handedness != "Left") and only_thumb_up
+            left_chrome_shortcut = (handedness == "Left") and fingers == [True, True, False, False, True]
+            left_desktop_shortcut = (handedness == "Left") and fingers == [False, True, True, False, True]
+            left_notepad_shortcut = (handedness == "Right") and fingers == [True, True, False, False, True]
 
             if not index_middle_up:
                 mouse.scroll_ref_y = None
@@ -221,6 +228,24 @@ def main():
                 mouse.scroll_ref_y = ref_y
                 cv2.putText(frame, "SCROLL MODE", (10, 110),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 150, 0), 2)
+            elif left_chrome_shortcut:
+                if current_time - last_shortcut_time > shortcut_cooldown:
+                    subprocess.Popen('start chrome', shell=True)
+                    last_shortcut_time = current_time
+                    cv2.putText(frame, "OPENING CHROME", (10, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
+            elif left_desktop_shortcut:
+                if current_time - last_shortcut_time > shortcut_cooldown:
+                    pyautogui.hotkey('win', 'd')
+                    last_shortcut_time = current_time
+                    cv2.putText(frame, "SHOW DESKTOP", (10, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
+            elif left_notepad_shortcut:
+                if current_time - last_shortcut_time > shortcut_cooldown:
+                    subprocess.Popen('start notepad', shell=True)
+                    last_shortcut_time = current_time
+                    cv2.putText(frame, "OPENING NOTEPAD", (10, 110),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
 
             elif index_pinky_up:
                 if current_time - last_click_time > click_cooldown:
