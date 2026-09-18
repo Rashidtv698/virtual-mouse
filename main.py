@@ -298,6 +298,21 @@ def main():
 
             cv2.putText(frame, f"Hand: {handedness} | Fingers: {fingers}", (10, 170),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
+        else:
+    # No hand detected this frame — safely release any held state
+            if is_dragging:
+                pyautogui.mouseUp()
+                is_dragging = False
+            pinch_start_time = None
+            left_brightness_active = False
+            brightness_anchor_y = None
+            volume_anchor_x = None
+            locked_axis = None
+            mouse.scroll_ref_y = None
+            pose_history = []  # if you add the stability buffer later, clear it here too
+
+            cv2.putText(frame, "NO HAND DETECTED", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
         cv2.rectangle(frame, (100, 100), (cam_width - 100, cam_height - 100),
                       (255, 0, 0), 1)
