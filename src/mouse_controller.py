@@ -7,18 +7,12 @@ pyautogui.PAUSE = 0  # don't let pyautogui add its own delay per call — we con
 
 class MouseController:
     def __init__(self, smoothing_factor=0.5):
-        """
-        smoothing_factor: 0 = no smoothing (raw, jittery), 
-                           closer to 1 = smoother but more lag.
-        This is a simple exponential moving average — Phase 8 will
-        replace this with a more robust filter if needed.
-        """
         self.scroll_ref_y = None
         self.smoothing_factor = smoothing_factor
         self.prev_x, self.prev_y = 0, 0
 
     def move(self, target_x, target_y):
-        # Exponential smoothing: blend previous position with new target
+        
         smooth_x = self.prev_x + (target_x - self.prev_x) * (1 - self.smoothing_factor)
         smooth_y = self.prev_y + (target_y - self.prev_y) * (1 - self.smoothing_factor)
 
