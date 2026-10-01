@@ -44,6 +44,8 @@ GESTURE_LEGEND = [
     ("🎚", "Thumb+Index Pinch (Left)", "Brightness / Volume"),
     ("🌐", "Thumb+Index+Pinky (Left)", "Open Chrome"),
     ("🖥", "Index+Middle+Pinky (Left)", "Show Desktop"),
+    ("⏭", "Thumb+Middle+Index Up (Right)", "Last Slide"),
+    ("⏮", "Thumb+Middle+Index Up (Left)", "First Slide"),
 ]
 
 def is_powerpoint_active():
@@ -295,6 +297,9 @@ class VirtualMouseGUI:
                 left_extended_only = left_thumb_index_shape and not is_pinching_thumb_index
                 left_chrome_shortcut = (handedness == "Left") and fingers == [True, True, False, False, True]
                 left_desktop_shortcut = (handedness == "Left") and fingers == [False, True, True, False, True]
+                thumb_middle_extended = fingers == [True, True, True, False, False]
+                right_last_slide = (handedness != "Left") and thumb_middle_extended
+                left_first_slide = (handedness == "Left") and thumb_middle_extended
 
                 if not index_middle_up:
                     self.mouse.scroll_ref_y = None
@@ -387,6 +392,23 @@ class VirtualMouseGUI:
                             self.last_slide_time = current_time
                     else:
                         gesture_text = "NEXT SLIDE gesture (PowerPoint not active)"
+                elif right_last_slide:
+                    if is_powerpoint_active():
+                        if current_time - self.last_slide_time > self.slide_cooldown:
+                            pyautogui.press('end')
+                            gesture_text = "LAST SLIDE (Right hand)"
+                            self.last_slide_time = current_time
+                    else:
+                        gesture_text = "LAST SLIDE gesture (PowerPoint not active)"
+
+                elif left_first_slide:
+                    if is_powerpoint_active():
+                        if current_time - self.last_slide_time > self.slide_cooldown:
+                            pyautogui.press('home')
+                            gesture_text = "FIRST SLIDE (Left hand)"
+                            self.last_slide_time = current_time
+                    else:
+                        gesture_text = "FIRST SLIDE gesture (PowerPoint not active)"
                 elif left_chrome_shortcut:
                     if current_time - self.last_shortcut_time > self.shortcut_cooldown:
                         subprocess.Popen('start chrome', shell=True)
@@ -505,4 +527,5 @@ def run_app():
     root = tk.Tk()
     app = VirtualMouseGUI(root)
     root.protocol("WM_DELETE_WINDOW", app.on_exit)
+    root.state('zoomed')
     root.mainloop()
